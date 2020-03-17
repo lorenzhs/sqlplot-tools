@@ -205,6 +205,7 @@ void SpLatex::multiplot(size_t ln, size_t indent, const std::string& cmdline)
 
     bool title_mark = false;
     bool ptitle_mark = false;
+    bool notitle_mark = false;
     bool xerr = false, yerr = false;
 
     if (!groupfields.empty() && is_suffix(groupfields.back(), "|title")) {
@@ -218,6 +219,23 @@ void SpLatex::multiplot(size_t ln, size_t indent, const std::string& cmdline)
         groupfields.back().resize(groupfields.back().size() - 7);
         multiplot.resize(multiplot.size() - 7);
         ptitle_mark = true;
+    }
+    else if (!groupfields.empty() && is_suffix(groupfields.back(), "|notitle")) {
+        // remove |notitle from multiplot string
+        groupfields.back().resize(groupfields.back().size() - 8);
+        multiplot.resize(multiplot.size() - 8);
+        // title_mark will be unset later if no title column exists
+        title_mark = true;
+        notitle_mark = true;
+        std::cout << "found notitle. groupfields.back now: " << groupfields.back()
+                         << " multiplot now: " << multiplot;
+    }
+    else if (!groupfields.empty() && is_suffix(groupfields.back(), "|noptitle")) {
+        // remove |notitle from multiplot string
+        groupfields.back().resize(groupfields.back().size() - 9);
+        multiplot.resize(multiplot.size() - 9);
+        ptitle_mark = true;
+        notitle_mark = true;
     }
 
     // execute query
@@ -240,8 +258,13 @@ void SpLatex::multiplot(size_t ln, size_t indent, const std::string& cmdline)
     if (sql->exist_col("yerr"))
         yerr = true;
 
-    if (title_mark && !sql->exist_col("title"))
-        OUT_THROW("MULTIPLOT failed: title mark set but result contains no 'title' column.");
+    // Use, but don't require a title column if |notitle is used
+    if (title_mark && !sql->exist_col("title")) {
+        if (notitle_mark)
+            title_mark = false;
+        else
+            OUT_THROW("MULTIPLOT failed: title mark set but result contains no 'title' column.");
+    }
 
     if (ptitle_mark && !sql->exist_col("ptitle"))
         OUT_THROW("MULTIPLOT failed: ptitle mark set but result contains no 'ptitle' column.");
@@ -356,7 +379,7 @@ void SpLatex::multiplot(size_t ln, size_t indent, const std::string& cmdline)
     static const boost::regex
         re_addplot("[[:blank:]]*(\\\\addplot.*coordinates \\{)[^}]+(\\};.*)");
     static const boost::regex
-        re_legend("[[:blank:]]*(\\\\addlegendentry\\{).*(\\};.*)");
+        re_legend("[[:blank:]]*((?:%[[:blank:]]*)?\\\\addlegendentry\\{).*(\\};.*)");
 
     boost::smatch rm;
 
@@ -379,6 +402,9 @@ void SpLatex::multiplot(size_t ln, size_t indent, const std::string& cmdline)
             }
             else
             {
+                // If |notitle or |noptitle is set, comment out legend entries
+                if (notitle_mark)
+                    out << "% ";
                 // add missing \addlegendentry
                 out << "\\addlegendentry{" << legendlist[entry]
                     << "};" << std::endl;
@@ -406,6 +432,9 @@ void SpLatex::multiplot(size_t ln, size_t indent, const std::string& cmdline)
         out << "\\addplot coordinates {" << coordlist[entry]
             << " };" << std::endl;
 
+        // If |notitle or |noptitle is set, comment out legend entries
+        if (notitle_mark)
+            out << "% ";
         out << "\\addlegendentry{" << legendlist[entry]
             << "};" << std::endl;
 
